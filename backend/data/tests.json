@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "Test GET education data without DB",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "schools": "array",
+        "users": "array",
+        "teachers": "array"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
