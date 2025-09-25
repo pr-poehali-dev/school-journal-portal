@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
 
 type UserRole = 'admin' | 'director' | 'teacher' | 'student' | null;
@@ -33,7 +35,7 @@ interface Class {
   name: string;
   grade: number;
   schoolId: string;
-  teacherId?: string;
+  teacherId?: string;  // классный руководитель
 }
 
 interface Student {
@@ -41,6 +43,26 @@ interface Student {
   name: string;
   classId: string;
   schoolId: string;
+}
+
+interface Grade {
+  id: string;
+  studentId: string;
+  teacherId: string;
+  subject: string;
+  grade: number;
+  date: string;
+  classId: string;
+}
+
+interface Post {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  schoolId: string;
+  date: string;
 }
 
 interface School {
@@ -59,8 +81,13 @@ const Index = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [showAddSchool, setShowAddSchool] = useState(false);
   const [newSchool, setNewSchool] = useState({ name: '', address: '' });
+  const [showAddPost, setShowAddPost] = useState(false);
+  const [newPost, setNewPost] = useState({ title: '', content: '' });
+  const [selectedClass, setSelectedClass] = useState<string>('');
 
   // Функции для работы с localStorage
   const saveToStorage = (key: string, data: any) => {
@@ -85,6 +112,8 @@ const Index = () => {
     setTeachers(loadFromStorage('teachers'));
     setClasses(loadFromStorage('classes'));
     setStudents(loadFromStorage('students'));
+    setGrades(loadFromStorage('grades'));
+    setPosts(loadFromStorage('posts'));
   }, []);
 
   // Сохраняем данные при изменении
@@ -107,6 +136,14 @@ const Index = () => {
   useEffect(() => {
     saveToStorage('students', students);
   }, [students]);
+
+  useEffect(() => {
+    saveToStorage('grades', grades);
+  }, [grades]);
+
+  useEffect(() => {
+    saveToStorage('posts', posts);
+  }, [posts]);
 
   const handleAdminLogin = () => {
     navigate('/admin-login');
@@ -258,11 +295,74 @@ const Index = () => {
     }
   };
 
+  const assignClassTeacher = (classId: string, teacherId: string) => {
+    setClasses(classes.map(c => 
+      c.id === classId ? { ...c, teacherId } : c
+    ));
+  };
+
+  const addPost = () => {
+    if (newPost.title && newPost.content && currentUser) {
+      const post: Post = {
+        id: Date.now().toString(),
+        title: newPost.title,
+        content: newPost.content,
+        authorId: currentUser.id,
+        authorName: currentUser.name,
+        schoolId: currentUser.schoolId!,
+        date: new Date().toLocaleDateString('ru-RU')
+      };
+      setPosts([...posts, post]);
+      setNewPost({ title: '', content: '' });
+      setShowAddPost(false);
+    }
+  };
+
+  const updateGrade = (studentId: string, subject: string, newGrade: number, classId: string) => {
+    if (!currentUser) return;
+    
+    const gradeId = `${studentId}-${subject}-${Date.now()}`;
+    const grade: Grade = {
+      id: gradeId,
+      studentId,
+      teacherId: currentUser.id,
+      subject,
+      grade: newGrade,
+      date: new Date().toISOString().split('T')[0],
+      classId
+    };
+    
+    setGrades([...grades, grade]);
+  };
+
+  const getStudentGrades = (studentId: string, subject: string) => {
+    return grades
+      .filter(g => g.studentId === studentId && g.subject === subject)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+
   const getCurrentUserSchool = () => {
     if (currentUser?.role === 'director') {
       return schools.find(s => s.director?.id === currentUser.id);
     }
+    if (currentUser?.schoolId) {
+      return schools.find(s => s.id === currentUser.schoolId);
+    }
     return null;
+  };
+
+  const getCurrentTeacher = () => {
+    if (currentUser?.role === 'teacher') {
+      return teachers.find(t => t.id === currentUser.id);
+    }
+    return null;
+  };
+
+  // Сортируем учеников по алфавиту
+  const getSortedStudents = (classId: string) => {
+    return students
+      .filter(s => s.classId === classId)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   };
 
   if (!currentUser) {
@@ -370,7 +470,7 @@ const Index = () => {
                   Электронный журнал
                 </h1>
                 <p className="text-sm text-education-gray">
-                  Образовательный портал
+                  {getCurrentUserSchool()?.name || 'Образовательный портал'}
                 </p>
               </div>
             </div>
@@ -515,7 +615,77 @@ const Index = () => {
                   {getCurrentUserSchool()?.name}
                 </p>
               </div>
+              <Button
+                onClick={() => setShowAddPost(true)}
+                className="bg-primary hover:bg-primary-600"
+              >
+                <Icon name="Plus" size={16} className="mr-2" />
+                Добавить объявление
+              </Button>
             </div>
+
+            {showAddPost && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Новое объявление</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="postTitle">Заголовок</Label>
+                    <Input
+                      id="postTitle"
+                      value={newPost.title}
+                      onChange={(e) => setNewPost({...newPost, title: e.target.value})}
+                      placeholder="Введите заголовок объявления"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="postContent">Содержание</Label>
+                    <Textarea
+                      id="postContent"
+                      value={newPost.content}
+                      onChange={(e) => setNewPost({...newPost, content: e.target.value})}
+                      placeholder="Введите текст объявления"
+                      className="min-h-[100px]"
+                    />
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button onClick={addPost}>Опубликовать</Button>
+                    <Button variant="outline" onClick={() => setShowAddPost(false)}>
+                      Отмена
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Объявления школы */}
+            {posts.filter(p => p.schoolId === currentUser.schoolId).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Icon name="Megaphone" size={20} className="mr-2 text-primary" />
+                    Объявления школы
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {posts
+                    .filter(p => p.schoolId === currentUser.schoolId)
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .slice(0, 3)
+                    .map(post => (
+                      <div key={post.id} className="p-4 bg-primary-50 rounded-lg">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-semibold text-primary-900">{post.title}</h4>
+                          <Badge variant="outline">{post.date}</Badge>
+                        </div>
+                        <p className="text-education-gray text-sm">{post.content}</p>
+                        <p className="text-xs text-education-gray mt-2">Автор: {post.authorName}</p>
+                      </div>
+                    ))}
+                </CardContent>
+              </Card>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Управление учителями */}
@@ -584,7 +754,8 @@ const Index = () => {
                     {classes
                       .filter(c => c.schoolId === currentUser.schoolId)
                       .map(schoolClass => {
-                        const studentsInClass = students.filter(s => s.classId === schoolClass.id);
+                        const studentsInClass = getSortedStudents(schoolClass.id);
+                        const classTeacher = teachers.find(t => t.id === schoolClass.teacherId);
                         return (
                           <div key={schoolClass.id} className="p-3 bg-primary-50 rounded-lg">
                             <div className="flex items-center justify-between mb-2">
@@ -593,15 +764,40 @@ const Index = () => {
                                 <p className="text-sm text-education-gray">
                                   {studentsInClass.length} учеников
                                 </p>
+                                {classTeacher && (
+                                  <p className="text-xs text-green-600">
+                                    Кл. рук.: {classTeacher.name}
+                                  </p>
+                                )}
                               </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => addStudent(schoolClass.id, currentUser.schoolId!)}
-                              >
-                                <Icon name="UserPlus" size={14} className="mr-1" />
-                                Добавить ученика
-                              </Button>
+                              <div className="flex flex-col gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => addStudent(schoolClass.id, currentUser.schoolId!)}
+                                >
+                                  <Icon name="UserPlus" size={14} className="mr-1" />
+                                  Ученик
+                                </Button>
+                                {!schoolClass.teacherId && (
+                                  <Select 
+                                    onValueChange={(value) => assignClassTeacher(schoolClass.id, value)}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue placeholder="Кл. рук." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {teachers
+                                        .filter(t => t.schoolId === currentUser.schoolId)
+                                        .map(teacher => (
+                                          <SelectItem key={teacher.id} value={teacher.id}>
+                                            {teacher.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                )}
+                              </div>
                             </div>
                             
                             {studentsInClass.length > 0 && (
@@ -662,10 +858,9 @@ const Index = () => {
                   </div>
                   <div className="text-center p-4 bg-primary-50 rounded-lg">
                     <div className="text-2xl font-bold text-primary-900">
-                      {Math.round((students.filter(s => s.schoolId === currentUser.schoolId).length / 
-                        Math.max(classes.filter(c => c.schoolId === currentUser.schoolId).length, 1)))}
+                      {posts.filter(p => p.schoolId === currentUser.schoolId).length}
                     </div>
-                    <div className="text-sm text-education-gray">Среднее в классе</div>
+                    <div className="text-sm text-education-gray">Объявлений</div>
                   </div>
                 </div>
               </CardContent>
@@ -674,14 +869,164 @@ const Index = () => {
         )}
 
         {currentUser.role === 'teacher' && (
-          <div className="text-center py-12">
-            <Icon name="BookOpen" size={48} className="mx-auto text-education-gray mb-4" />
-            <h3 className="text-lg font-medium text-primary-900 mb-2">
-              Панель учителя
-            </h3>
-            <p className="text-education-gray">
-              Здесь будет функционал ведения электронного журнала
-            </p>
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold text-primary-900">
+                  Панель учителя
+                </h2>
+                <p className="text-education-gray">
+                  {getCurrentTeacher()?.subject} • {getCurrentUserSchool()?.name}
+                </p>
+              </div>
+            </div>
+
+            {/* Выбор класса для журнала */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Icon name="BookOpen" size={20} className="mr-2 text-primary" />
+                  Электронный журнал
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4">
+                  <Label htmlFor="classSelect">Выберите класс</Label>
+                  <Select value={selectedClass} onValueChange={setSelectedClass}>
+                    <SelectTrigger id="classSelect" className="w-full">
+                      <SelectValue placeholder="Выберите класс для работы с журналом" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classes
+                        .filter(c => c.schoolId === currentUser.schoolId)
+                        .map(schoolClass => (
+                          <SelectItem key={schoolClass.id} value={schoolClass.id}>
+                            {schoolClass.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedClass && (
+                  <div className="mt-6">
+                    <div className="mb-4">
+                      <h3 className="text-lg font-semibold text-primary-900">
+                        {classes.find(c => c.id === selectedClass)?.name} • {getCurrentTeacher()?.subject}
+                      </h3>
+                    </div>
+
+                    {/* Таблица журнала */}
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-primary-100">
+                            <tr>
+                              <th className="px-4 py-3 text-left font-medium text-primary-900 border-r">
+                                Ученик
+                              </th>
+                              <th className="px-4 py-3 text-center font-medium text-primary-900 border-r">
+                                Средний балл
+                              </th>
+                              <th className="px-4 py-3 text-center font-medium text-primary-900">
+                                Новая оценка
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white">
+                            {getSortedStudents(selectedClass).map((student, index) => {
+                              const studentGrades = getStudentGrades(student.id, getCurrentTeacher()?.subject || '');
+                              const averageGrade = studentGrades.length > 0 
+                                ? (studentGrades.reduce((sum, g) => sum + g.grade, 0) / studentGrades.length).toFixed(1)
+                                : '-';
+                              
+                              return (
+                                <tr key={student.id} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                                  <td className="px-4 py-3 border-r border-b">
+                                    <div>
+                                      <p className="font-medium text-primary-900">{student.name}</p>
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {studentGrades.map(grade => (
+                                          <Badge 
+                                            key={grade.id}
+                                            variant={grade.grade >= 4 ? "default" : grade.grade >= 3 ? "secondary" : "destructive"}
+                                            className="text-xs"
+                                          >
+                                            {grade.grade}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-center border-r border-b">
+                                    <Badge 
+                                      variant={parseFloat(averageGrade) >= 4 ? "default" : 
+                                               parseFloat(averageGrade) >= 3 ? "secondary" : "destructive"}
+                                      className={averageGrade === '-' ? 'bg-gray-200 text-gray-600' : ''}
+                                    >
+                                      {averageGrade}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-4 py-3 text-center border-b">
+                                    <div className="flex justify-center space-x-1">
+                                      {[5, 4, 3, 2].map(grade => (
+                                        <Button
+                                          key={grade}
+                                          size="sm"
+                                          variant={grade >= 4 ? "default" : grade >= 3 ? "secondary" : "destructive"}
+                                          className="w-8 h-8 p-0 text-xs"
+                                          onClick={() => updateGrade(student.id, getCurrentTeacher()?.subject || '', grade, selectedClass)}
+                                        >
+                                          {grade}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {getSortedStudents(selectedClass).length === 0 && (
+                      <div className="text-center py-8 text-education-gray">
+                        В этом классе пока нет учеников
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Объявления школы для учителя */}
+            {posts.filter(p => p.schoolId === currentUser.schoolId).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Icon name="Megaphone" size={20} className="mr-2 text-primary" />
+                    Объявления школы
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {posts
+                    .filter(p => p.schoolId === currentUser.schoolId)
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .slice(0, 2)
+                    .map(post => (
+                      <div key={post.id} className="p-4 bg-primary-50 rounded-lg">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-semibold text-primary-900">{post.title}</h4>
+                          <Badge variant="outline">{post.date}</Badge>
+                        </div>
+                        <p className="text-education-gray text-sm">{post.content}</p>
+                        <p className="text-xs text-education-gray mt-2">Автор: {post.authorName}</p>
+                      </div>
+                    ))}
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
