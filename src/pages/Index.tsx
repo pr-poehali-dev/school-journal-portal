@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,7 @@ interface School {
 }
 
 const Index = () => {
+  const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginForm, setLoginForm] = useState({ login: '', password: '' });
   const [schools, setSchools] = useState<School[]>([]);
@@ -32,29 +34,30 @@ const Index = () => {
   const [showAddSchool, setShowAddSchool] = useState(false);
   const [newSchool, setNewSchool] = useState({ name: '', address: '' });
 
-  const handleAdminLogin = () => {
-    if (loginForm.login === '666' && loginForm.password === '1234') {
-      setCurrentUser({
-        id: 'admin-1',
-        name: 'Администратор системы',
-        role: 'admin'
-      });
-    } else {
-      alert('Неверный логин или пароль администратора');
+  // Проверяем localStorage при загрузке страницы
+  useEffect(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
     }
+  }, []);
+
+  const handleAdminLogin = () => {
+    navigate('/admin-login');
   };
 
   const handleUserLogin = () => {
     const user = users.find(u => u.login === loginForm.login && u.password === loginForm.password);
     if (user) {
       setCurrentUser(user);
+      localStorage.setItem('currentUser', JSON.stringify(user));
     } else {
       alert('Пользователь не найден');
     }
   };
 
   const handleZverLogin = () => {
-    alert('Интеграция с ЗверУслуги в разработке');
+    navigate('/zver-integration');
   };
 
   const addSchool = () => {
@@ -117,6 +120,7 @@ const Index = () => {
 
   const logout = () => {
     setCurrentUser(null);
+    localStorage.removeItem('currentUser');
     setLoginForm({ login: '', password: '' });
   };
 
@@ -193,14 +197,15 @@ const Index = () => {
 
               <div className="text-center">
                 <p className="text-sm text-education-gray mb-2">
-                  Администраторский вход
+                  Административный вход
                 </p>
                 <Button
                   onClick={handleAdminLogin}
                   variant="link"
                   className="text-primary hover:text-primary-700 text-sm"
                 >
-                  Вход для администратора (логин: 666, пароль: 1234)
+                  <Icon name="Shield" size={16} className="mr-1" />
+                  Вход для администратора
                 </Button>
               </div>
             </CardContent>
