@@ -16,6 +16,31 @@ interface User {
   role: UserRole;
   login?: string;
   password?: string;
+  schoolId?: string;
+}
+
+interface Teacher {
+  id: string;
+  name: string;
+  subject: string;
+  login: string;
+  password: string;
+  schoolId: string;
+}
+
+interface Class {
+  id: string;
+  name: string;
+  grade: number;
+  schoolId: string;
+  teacherId?: string;
+}
+
+interface Student {
+  id: string;
+  name: string;
+  classId: string;
+  schoolId: string;
 }
 
 interface School {
@@ -31,16 +56,57 @@ const Index = () => {
   const [loginForm, setLoginForm] = useState({ login: '', password: '' });
   const [schools, setSchools] = useState<School[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [showAddSchool, setShowAddSchool] = useState(false);
   const [newSchool, setNewSchool] = useState({ name: '', address: '' });
 
-  // Проверяем localStorage при загрузке страницы
+  // Функции для работы с localStorage
+  const saveToStorage = (key: string, data: any) => {
+    localStorage.setItem(key, JSON.stringify(data));
+  };
+
+  const loadFromStorage = (key: string) => {
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
+  };
+
+  // Загружаем данные при загрузке компонента
   useEffect(() => {
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
     }
+    
+    // Загружаем все сохраненные данные
+    setSchools(loadFromStorage('schools'));
+    setUsers(loadFromStorage('users'));
+    setTeachers(loadFromStorage('teachers'));
+    setClasses(loadFromStorage('classes'));
+    setStudents(loadFromStorage('students'));
   }, []);
+
+  // Сохраняем данные при изменении
+  useEffect(() => {
+    saveToStorage('schools', schools);
+  }, [schools]);
+
+  useEffect(() => {
+    saveToStorage('users', users);
+  }, [users]);
+
+  useEffect(() => {
+    saveToStorage('teachers', teachers);
+  }, [teachers]);
+
+  useEffect(() => {
+    saveToStorage('classes', classes);
+  }, [classes]);
+
+  useEffect(() => {
+    saveToStorage('students', students);
+  }, [students]);
 
   const handleAdminLogin = () => {
     navigate('/admin-login');
@@ -48,9 +114,22 @@ const Index = () => {
 
   const handleUserLogin = () => {
     const user = users.find(u => u.login === loginForm.login && u.password === loginForm.password);
+    const teacher = teachers.find(t => t.login === loginForm.login && t.password === loginForm.password);
+    
     if (user) {
       setCurrentUser(user);
       localStorage.setItem('currentUser', JSON.stringify(user));
+    } else if (teacher) {
+      const teacherUser: User = {
+        id: teacher.id,
+        name: teacher.name,
+        role: 'teacher',
+        login: teacher.login,
+        password: teacher.password,
+        schoolId: teacher.schoolId
+      };
+      setCurrentUser(teacherUser);
+      localStorage.setItem('currentUser', JSON.stringify(teacherUser));
     } else {
       alert('Пользователь не найден');
     }
@@ -84,7 +163,8 @@ const Index = () => {
         name,
         role: 'director',
         login,
-        password
+        password,
+        schoolId
       };
       
       setUsers([...users, director]);
@@ -93,13 +173,17 @@ const Index = () => {
   };
 
   const generateUserCredentials = () => {
-    if (users.length === 0) {
+    const allUsers = [
+      ...users.filter(u => u.login && u.password),
+      ...teachers.map(t => ({ name: t.name, role: 'teacher', login: t.login, password: t.password }))
+    ];
+    
+    if (allUsers.length === 0) {
       alert('Нет пользователей для печати');
       return;
     }
 
-    const credentials = users
-      .filter(u => u.login && u.password)
+    const credentials = allUsers
       .map(u => `${u.name} (${u.role}): Логин: ${u.login}, Пароль: ${u.password}`)
       .join('\n');
     
@@ -122,6 +206,63 @@ const Index = () => {
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
     setLoginForm({ login: '', password: '' });
+  };
+
+  // Функции для панели директора
+  const addTeacher = (schoolId: string) => {
+    const name = prompt('Введите имя учителя:');
+    const subject = prompt('Введите предмет:');
+    const login = prompt('Введите логин:');
+    const password = prompt('Введите пароль:');
+    
+    if (name && subject && login && password) {
+      const teacher: Teacher = {
+        id: Date.now().toString(),
+        name,
+        subject,
+        login,
+        password,
+        schoolId
+      };
+      setTeachers([...teachers, teacher]);
+    }
+  };
+
+  const addClass = (schoolId: string) => {
+    const name = prompt('Введите название класса (например: 5А):');
+    const gradeStr = prompt('Введите номер класса (1-11):');
+    const grade = parseInt(gradeStr || '1');
+    
+    if (name && !isNaN(grade) && grade >= 1 && grade <= 11) {
+      const newClass: Class = {
+        id: Date.now().toString(),
+        name,
+        grade,
+        schoolId
+      };
+      setClasses([...classes, newClass]);
+    }
+  };
+
+  const addStudent = (classId: string, schoolId: string) => {
+    const name = prompt('Введите имя и фамилию ученика:');
+    
+    if (name) {
+      const student: Student = {
+        id: Date.now().toString(),
+        name,
+        classId,
+        schoolId
+      };
+      setStudents([...students, student]);
+    }
+  };
+
+  const getCurrentUserSchool = () => {
+    if (currentUser?.role === 'director') {
+      return schools.find(s => s.director?.id === currentUser.id);
+    }
+    return null;
   };
 
   if (!currentUser) {
@@ -364,14 +505,171 @@ const Index = () => {
         )}
 
         {currentUser.role === 'director' && (
-          <div className="text-center py-12">
-            <Icon name="Users" size={48} className="mx-auto text-education-gray mb-4" />
-            <h3 className="text-lg font-medium text-primary-900 mb-2">
-              Панель директора
-            </h3>
-            <p className="text-education-gray">
-              Здесь будет функционал управления учителями, классами и учениками
-            </p>
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold text-primary-900">
+                  Панель директора
+                </h2>
+                <p className="text-education-gray">
+                  {getCurrentUserSchool()?.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Управление учителями */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Icon name="Users" size={20} className="mr-2 text-primary" />
+                    Учителя
+                  </CardTitle>
+                  <CardDescription>
+                    Управление педагогическим составом
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Button 
+                    onClick={() => currentUser.schoolId && addTeacher(currentUser.schoolId)}
+                    className="w-full"
+                  >
+                    <Icon name="UserPlus" size={16} className="mr-2" />
+                    Добавить учителя
+                  </Button>
+                  
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {teachers
+                      .filter(t => t.schoolId === currentUser.schoolId)
+                      .map(teacher => (
+                        <div key={teacher.id} className="flex items-center justify-between p-3 bg-primary-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">{teacher.name}</p>
+                            <p className="text-sm text-education-gray">{teacher.subject}</p>
+                          </div>
+                          <Badge variant="secondary">{teacher.subject}</Badge>
+                        </div>
+                      ))}
+                    
+                    {teachers.filter(t => t.schoolId === currentUser.schoolId).length === 0 && (
+                      <p className="text-center text-education-gray py-4">
+                        Учителя не добавлены
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Управление классами */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Icon name="School" size={20} className="mr-2 text-primary" />
+                    Классы
+                  </CardTitle>
+                  <CardDescription>
+                    Управление классами и учениками
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Button 
+                    onClick={() => currentUser.schoolId && addClass(currentUser.schoolId)}
+                    className="w-full"
+                  >
+                    <Icon name="Plus" size={16} className="mr-2" />
+                    Добавить класс
+                  </Button>
+                  
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {classes
+                      .filter(c => c.schoolId === currentUser.schoolId)
+                      .map(schoolClass => {
+                        const studentsInClass = students.filter(s => s.classId === schoolClass.id);
+                        return (
+                          <div key={schoolClass.id} className="p-3 bg-primary-50 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <p className="font-medium">{schoolClass.name}</p>
+                                <p className="text-sm text-education-gray">
+                                  {studentsInClass.length} учеников
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => addStudent(schoolClass.id, currentUser.schoolId!)}
+                              >
+                                <Icon name="UserPlus" size={14} className="mr-1" />
+                                Добавить ученика
+                              </Button>
+                            </div>
+                            
+                            {studentsInClass.length > 0 && (
+                              <div className="space-y-1">
+                                {studentsInClass.slice(0, 3).map(student => (
+                                  <p key={student.id} className="text-sm text-education-gray">
+                                    • {student.name}
+                                  </p>
+                                ))}
+                                {studentsInClass.length > 3 && (
+                                  <p className="text-sm text-education-gray">
+                                    ... и ещё {studentsInClass.length - 3} учеников
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    
+                    {classes.filter(c => c.schoolId === currentUser.schoolId).length === 0 && (
+                      <p className="text-center text-education-gray py-4">
+                        Классы не созданы
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Статистика */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Icon name="BarChart3" size={20} className="mr-2 text-primary" />
+                  Статистика школы
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 bg-primary-50 rounded-lg">
+                    <div className="text-2xl font-bold text-primary-900">
+                      {teachers.filter(t => t.schoolId === currentUser.schoolId).length}
+                    </div>
+                    <div className="text-sm text-education-gray">Учителей</div>
+                  </div>
+                  <div className="text-center p-4 bg-primary-50 rounded-lg">
+                    <div className="text-2xl font-bold text-primary-900">
+                      {classes.filter(c => c.schoolId === currentUser.schoolId).length}
+                    </div>
+                    <div className="text-sm text-education-gray">Классов</div>
+                  </div>
+                  <div className="text-center p-4 bg-primary-50 rounded-lg">
+                    <div className="text-2xl font-bold text-primary-900">
+                      {students.filter(s => s.schoolId === currentUser.schoolId).length}
+                    </div>
+                    <div className="text-sm text-education-gray">Учеников</div>
+                  </div>
+                  <div className="text-center p-4 bg-primary-50 rounded-lg">
+                    <div className="text-2xl font-bold text-primary-900">
+                      {Math.round((students.filter(s => s.schoolId === currentUser.schoolId).length / 
+                        Math.max(classes.filter(c => c.schoolId === currentUser.schoolId).length, 1)))}
+                    </div>
+                    <div className="text-sm text-education-gray">Среднее в классе</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
